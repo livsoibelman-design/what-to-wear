@@ -28,10 +28,10 @@ type Feedback = {
   ts: number;
 };
 
+type Tab = "stylist" | "closet" | "add" | "returned" | "taste";
+
 // ============================================================
-// SEED CLOSET — the demo wardrobe (Liv's actual order history)
-// New users start with this so they can play immediately, then
-// add their own via "Paste an email."
+// SEED CLOSET — Liv's actual order history
 // ============================================================
 const SEED_WARDROBE: Item[] = [
   { id: "alo-1", brand: "Alo Yoga", name: "Alosoft Suns Out Onesie", color: "Black", colorHex: "#0a0a0a", size: "XS", price: 128, category: "activewear", vibe: ["athleisure","going-out"] },
@@ -53,20 +53,6 @@ const SEED_WARDROBE: Item[] = [
 
 const STORAGE_KEY = "wtw_state_v1";
 
-function gradient(item: Item) {
-  const dark = ["#0a0a0a","#161616","#1a1a1a","#2a3552","#5a3e2a","#3d2818"].includes(item.colorHex);
-  const text = dark ? "#f5f5f5" : "#2a2a2a";
-  return { bg: `linear-gradient(135deg, ${item.colorHex} 0%, ${shade(item.colorHex, dark ? 0.15 : -0.1)} 100%)`, text };
-}
-function shade(hex: string, p: number): string {
-  const n = parseInt(hex.replace("#",""),16);
-  let r = (n >> 16) & 0xff, g = (n >> 8) & 0xff, b = n & 0xff;
-  r = Math.max(0, Math.min(255, Math.round(r + (p > 0 ? 255 - r : r) * p)));
-  g = Math.max(0, Math.min(255, Math.round(g + (p > 0 ? 255 - g : g) * p)));
-  b = Math.max(0, Math.min(255, Math.round(b + (p > 0 ? 255 - b : b) * p)));
-  return "#" + [r,g,b].map(x => x.toString(16).padStart(2,"0")).join("");
-}
-
 // ============================================================
 // MAIN
 // ============================================================
@@ -74,10 +60,9 @@ export default function Page() {
   const [wardrobe, setWardrobe] = useState<Item[]>([]);
   const [returned, setReturned] = useState<Set<string>>(new Set());
   const [feedback, setFeedback] = useState<Feedback[]>([]);
-  const [tab, setTab] = useState<"stylist"|"closet"|"returned"|"taste"|"add">("stylist");
+  const [tab, setTab] = useState<Tab>("stylist");
   const [hydrated, setHydrated] = useState(false);
 
-  // Load state from localStorage
   useEffect(() => {
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
@@ -95,7 +80,6 @@ export default function Page() {
     setHydrated(true);
   }, []);
 
-  // Persist
   useEffect(() => {
     if (!hydrated) return;
     localStorage.setItem(STORAGE_KEY, JSON.stringify({
@@ -115,318 +99,107 @@ export default function Page() {
   }
   function recordFeedback(f: Feedback) { setFeedback([...feedback, f]); }
 
-  function resetAll() {
-    if (!confirm("Reset your closet to the demo wardrobe? This deletes any items you've added.")) return;
-    setWardrobe(SEED_WARDROBE);
-    setReturned(new Set());
-    setFeedback([]);
-  }
-
   if (!hydrated) {
     return (
-      <div className="p-10 text-center font-editorial italic text-tea text-lg thinking">
-        Setting the table…
+      <div className="phone-shell flex items-center justify-center">
+        <div className="thinking font-serif italic text-terracotta text-lg">Setting the table…</div>
       </div>
     );
   }
 
   return (
-    <div className="max-w-[1100px] mx-auto px-6 py-10 md:py-14">
-      <Header
-        itemCount={activeItems.length}
-        brandCount={new Set(activeItems.map(i => i.brand)).size}
-        signalCount={feedback.length}
-        onReset={resetAll}
-      />
-      <Tabs tab={tab} setTab={setTab} counts={{ closet: activeItems.length, returned: returnedItems.length, taste: feedback.length }} />
-
-      {tab === "stylist" && (
-        <Stylist
-          items={activeItems}
-          feedback={feedback}
-          onFeedback={recordFeedback}
-        />
-      )}
-      {tab === "closet" && (
-        <Closet items={activeItems} onReturn={markReturned} />
-      )}
-      {tab === "returned" && (
-        <Returned items={returnedItems} onRestore={restoreItem} />
-      )}
-      {tab === "taste" && (
-        <Taste feedback={feedback} wardrobe={wardrobe} />
-      )}
-      {tab === "add" && (
-        <AddItem onParsed={addItems} />
-      )}
+    <div className="phone-shell">
+      <Wordmark />
+      {tab === "stylist"  && <StylistScreen items={activeItems} feedback={feedback} onFeedback={recordFeedback} />}
+      {tab === "closet"   && <ClosetScreen items={activeItems} onReturn={markReturned} />}
+      {tab === "add"      && <AddScreen onParsed={addItems} onDone={() => setTab("closet")} />}
+      {tab === "returned" && <ReturnScreen items={returnedItems} onRestore={restoreItem} />}
+      {tab === "taste"    && <TasteScreen feedback={feedback} wardrobe={wardrobe} />}
+      <BottomNav tab={tab} setTab={setTab} />
     </div>
   );
 }
 
 // ============================================================
-// HEADER — editorial masthead
+// SHARED — wordmark, color accent row, bottom nav
 // ============================================================
-function Header({
-  itemCount, brandCount, signalCount, onReset,
-}: {
-  itemCount: number; brandCount: number; signalCount: number; onReset: () => void;
-}) {
+function Wordmark() {
   return (
-    <header className="mb-10 md:mb-14 rise rise-1">
-      <div className="flex items-start justify-between flex-wrap gap-4">
-        <div>
-          <div className="font-editorial italic text-tea text-base mb-2">
-            a closet that knows you
-          </div>
-          <h1 className="font-serif text-[44px] md:text-[64px] leading-[0.95] m-0 -tracking-[1px] font-semibold text-ink">
-            What&nbsp;to&nbsp;Wear
-          </h1>
-        </div>
-        <button
-          onClick={onReset}
-          className="eyebrow text-tea hover:text-claret transition-colors mt-2"
-          title="Wipe and reload the demo closet"
-        >
-          Reset closet
-        </button>
+    <div className="px-6 pt-6 pb-2 flex items-center justify-between rise rise-1">
+      <div className="wordmark">what to wear</div>
+      <div className="text-[11px] tracking-[0.2em] uppercase text-terracotta/55 font-medium">
+        SS&nbsp;26
       </div>
-
-      {/* Editorial dateline — italic Cormorant tells the small story */}
-      <div className="mt-5 font-editorial text-soot/80 text-[17px] leading-snug max-w-[520px]">
-        <span className="font-serif font-medium text-ink">{itemCount}</span>
-        <span className="italic"> pieces in rotation,</span>{" "}
-        <span className="font-serif font-medium text-ink">{brandCount}</span>
-        <span className="italic"> brands,</span>{" "}
-        <span className="font-serif font-medium text-ink">{signalCount}</span>
-        <span className="italic"> signals learned. Quietly building your taste.</span>
-      </div>
-
-      {/* Hairline rule */}
-      <div className="mt-8 h-px bg-ink/15" />
-    </header>
+    </div>
   );
 }
 
-// ============================================================
-// TABS
-// ============================================================
-function Tabs({ tab, setTab, counts }: any) {
-  const tabs = [
-    { id: "stylist",  label: "The Stylist" },
-    { id: "closet",   label: "Closet",   count: counts.closet },
+function AccentRow() {
+  return (
+    <div className="px-6 mt-5 accent-row rise rise-2">
+      <div className="accent-dot" style={{ background: "var(--picante)" }} />
+      <div className="accent-dot" style={{ background: "var(--hibiscus)" }} />
+      <div className="accent-dot" style={{ background: "var(--citrus)" }} />
+      <div className="accent-bar" />
+      <div className="text-[10px] tracking-[0.18em] uppercase text-terracotta/55 font-medium">
+        Issue&nbsp;01
+      </div>
+    </div>
+  );
+}
+
+function BottomNav({ tab, setTab }: { tab: Tab; setTab: (t: Tab) => void }) {
+  const tabs: { id: Tab; label: string }[] = [
+    { id: "stylist",  label: "Stylist" },
+    { id: "closet",   label: "Closet" },
     { id: "add",      label: "Add" },
-    { id: "returned", label: "Returns",  count: counts.returned },
-    { id: "taste",    label: "Taste",    count: counts.taste },
+    { id: "returned", label: "Returns" },
+    { id: "taste",    label: "Taste" },
   ];
   return (
-    <nav className="flex gap-6 md:gap-9 border-b border-ink/10 mb-10 overflow-x-auto rise rise-2">
-      {tabs.map((t, i) => {
-        const active = tab === t.id;
-        return (
-          <button
-            key={t.id}
-            onClick={() => setTab(t.id)}
-            className={`tab-underline ${active ? "is-active" : ""} pb-3 -mb-px whitespace-nowrap text-left transition-colors ${
-              active ? "text-ink" : "text-tea hover:text-soot"
-            }`}
-          >
-            <span className="block eyebrow">
-              {String(i + 1).padStart(2, "0")}
-            </span>
-            <span className="font-serif text-[17px] md:text-[19px] -tracking-[0.3px]">
-              {t.label}
-              {t.count !== undefined && (
-                <sup className="ml-1.5 font-editorial italic text-[11px] text-tea">
-                  {t.count}
-                </sup>
-              )}
-            </span>
-          </button>
-        );
-      })}
+    <nav className="fixed left-0 right-0 bottom-0 bg-saltCream">
+      <div className="phone-shell !pb-0 !min-h-0">
+        <div className="relative h-[80px] px-6">
+          <div className="nav-line top-[12px]" />
+          <div className="flex items-start justify-between pt-[20px]">
+            {tabs.map(t => {
+              const active = tab === t.id;
+              return (
+                <button
+                  key={t.id}
+                  onClick={() => setTab(t.id)}
+                  className="flex flex-col items-center gap-2 group"
+                >
+                  <div
+                    className={`w-[6px] h-[6px] rounded-full transition-all ${
+                      active ? "bg-picante scale-100" : "bg-terracotta/25 scale-75 group-hover:bg-terracotta/50"
+                    }`}
+                  />
+                  <span
+                    className={`text-[11px] tracking-[0.06em] font-medium transition-colors ${
+                      active ? "text-terracotta" : "text-terracotta/55 group-hover:text-terracotta/80"
+                    }`}
+                  >
+                    {t.label}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      </div>
     </nav>
   );
 }
 
 // ============================================================
-// CLOSET
+// STYLIST SCREEN — frame 26:2 spec
 // ============================================================
-function Closet({ items, onReturn }: { items: Item[]; onReturn: (id: string) => void }) {
-  const [activeCat, setActiveCat] = useState("all");
-  const [activeBrand, setActiveBrand] = useState("all");
-  const cats = ["all", ...Array.from(new Set(items.map(i => i.category)))];
-  const brands = ["all", ...Array.from(new Set(items.map(i => i.brand))).sort()];
-  const filtered = items.filter(i =>
-    (activeCat === "all" || i.category === activeCat) &&
-    (activeBrand === "all" || i.brand === activeBrand)
-  );
-  const totalSpend = items.reduce((s,i) => s + (i.price || 0), 0);
-
-  return (
-    <div className="rise rise-3">
-      <Stats stats={[
-        { num: items.length, lbl: "In rotation" },
-        { num: new Set(items.map(i=>i.brand)).size, lbl: "Brands" },
-        { num: new Set(items.map(i=>i.category)).size, lbl: "Categories" },
-        { num: `$${totalSpend.toFixed(0)}`, lbl: "Closet value" },
-      ]} />
-      <div className="space-y-2 mb-7">
-        <FilterBar options={cats} active={activeCat} onChange={setActiveCat} />
-        <FilterBar options={brands} active={activeBrand} onChange={setActiveBrand} />
-      </div>
-      <div className="grid gap-5 md:gap-6" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(230px, 1fr))" }}>
-        {filtered.map(item => <Card key={item.id} item={item} onReturn={onReturn} />)}
-      </div>
-      {filtered.length === 0 && (
-        <div className="font-editorial italic text-tea text-lg py-12 text-center">
-          Nothing here in this filter — try clearing it.
-        </div>
-      )}
-    </div>
-  );
-}
-
-function Returned({ items, onRestore }: { items: Item[]; onRestore: (id: string) => void }) {
-  return (
-    <div className="rise rise-3">
-      <p className="font-editorial italic text-tea text-lg mb-7">
-        Items you returned, sent back, or no longer have. The stylist won't suggest these.
-      </p>
-      {items.length === 0 ? (
-        <div className="font-editorial italic text-tea/80 text-base py-12 text-center">
-          No returns yet. Tap &ldquo;I don&apos;t have this&rdquo; on a closet card to move it here.
-        </div>
-      ) : (
-        <div className="grid gap-5 md:gap-6" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(230px, 1fr))" }}>
-          {items.map(item => <Card key={item.id} item={item} returned onRestore={onRestore} />)}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function Card({ item, returned, onReturn, onRestore }: {
-  item: Item; returned?: boolean;
-  onReturn?: (id: string) => void; onRestore?: (id: string) => void;
+function StylistScreen({
+  items, feedback, onFeedback,
+}: {
+  items: Item[]; feedback: Feedback[]; onFeedback: (f: Feedback) => void;
 }) {
-  const g = gradient(item);
-  return (
-    <div className={`group bg-paper relative lift ${returned ? "opacity-55" : ""}`}>
-      {/* Image */}
-      <div
-        className="relative w-full aspect-[4/5] flex items-end justify-start"
-        style={{ background: g.bg }}
-      >
-        {/* Subtle inner texture for the gradient */}
-        <div
-          className="absolute inset-0 opacity-30 mix-blend-overlay pointer-events-none"
-          style={{
-            backgroundImage:
-              "radial-gradient(at 30% 20%, rgba(255,255,255,0.18), transparent 55%), radial-gradient(at 80% 90%, rgba(0,0,0,0.18), transparent 55%)",
-          }}
-        />
-        <div
-          className="relative font-serif italic text-[15px] tracking-wide px-5 py-5"
-          style={{ color: g.text, opacity: 0.78 }}
-        >
-          {item.brand}
-        </div>
-        {returned && (
-          <div className="absolute inset-0 flex items-center justify-center backdrop-blur-[1px] bg-black/35 text-cream text-[10px] tracking-[0.4em] font-medium">
-            RETURNED
-          </div>
-        )}
-      </div>
-
-      {/* Caption */}
-      <div className="px-4 pt-4 pb-5">
-        <div className="flex items-baseline justify-between gap-3">
-          <div className="eyebrow text-tea truncate">{item.brand}</div>
-          {item.price ? (
-            <div className="font-editorial italic text-[13px] text-tea shrink-0">
-              ${item.price.toFixed(0)}
-            </div>
-          ) : null}
-        </div>
-        <div className="font-serif text-[15px] leading-snug mt-1 text-soot">
-          {item.name}
-        </div>
-        <div className="font-editorial italic text-[13px] text-cocoa mt-1.5">
-          {item.color} · size {item.size}
-        </div>
-
-        {item.vibe.length > 0 && (
-          <div className="mt-3 flex flex-wrap gap-x-2.5 gap-y-1">
-            {item.vibe.map(v => (
-              <span key={v} className="font-editorial italic text-[12px] text-tea">
-                {v}
-              </span>
-            ))}
-          </div>
-        )}
-
-        {!returned && onReturn && (
-          <button
-            onClick={() => onReturn(item.id)}
-            className="mt-4 pt-3 w-full border-t border-ink/8 eyebrow text-tea hover:text-claret transition-colors"
-            title="Move to Returns"
-          >
-            I don&apos;t have this
-          </button>
-        )}
-        {returned && onRestore && (
-          <button
-            onClick={() => onRestore(item.id)}
-            className="mt-4 pt-3 w-full border-t border-ink/8 eyebrow text-tea hover:text-soot transition-colors"
-          >
-            Restore to closet
-          </button>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function FilterBar({ options, active, onChange }: any) {
-  return (
-    <div className="flex flex-wrap gap-x-5 gap-y-1">
-      {options.map((o: string) => {
-        const isActive = o === active;
-        return (
-          <button
-            key={o}
-            onClick={() => onChange(o)}
-            className={`text-[13px] tracking-wide pb-0.5 transition-colors ${
-              isActive
-                ? "text-ink border-b border-ink"
-                : "text-tea hover:text-soot border-b border-transparent"
-            }`}
-          >
-            {o}
-          </button>
-        );
-      })}
-    </div>
-  );
-}
-
-function Stats({ stats }: { stats: { num: any; lbl: string }[] }) {
-  return (
-    <div className="grid gap-x-8 gap-y-5 mb-9 grid-cols-2 md:grid-cols-4">
-      {stats.map((s,i) => (
-        <div key={i} className="border-l border-ink/15 pl-4">
-          <div className="font-serif text-[34px] leading-none font-semibold text-ink">{s.num}</div>
-          <div className="eyebrow text-tea mt-2">{s.lbl}</div>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-// ============================================================
-// STYLIST
-// ============================================================
-function Stylist({ items, feedback, onFeedback }: { items: Item[]; feedback: Feedback[]; onFeedback: (f: Feedback) => void }) {
   const [q, setQ] = useState("");
   const [loading, setLoading] = useState(false);
   const [outfitText, setOutfitText] = useState("");
@@ -434,30 +207,29 @@ function Stylist({ items, feedback, onFeedback }: { items: Item[]; feedback: Fee
   const [lastTaggedIds, setLastTaggedIds] = useState<string[]>([]);
   const [thanks, setThanks] = useState("");
 
-  const suggestions = [
-    { label: "Dinner out", q: "Dinner Saturday in West Hollywood — going out, elevated but comfortable. No jeans, no leather." },
-    { label: "Pilates → coffee", q: "Pilates → coffee → casual lunch with a friend. Athleisure that doesn't look like I just rolled out of bed." },
-    { label: "Beach day", q: "Beach day in Manhattan Beach. Bring something to throw on if it gets cool." },
-    { label: "Date night", q: "Date night, somewhere romantic. Feminine and a little flirty, not too dressy." },
-    { label: "WFH + Zoom", q: "WFH all day but a Zoom in the afternoon. Top-half-only matters." },
+  const chips = [
+    { label: "Drinks Saturday", q: "Drinks Saturday in SoHo, going out, elevated but easy." },
+    { label: "Pilates → coffee", q: "Pilates → coffee → casual lunch. Athleisure that doesn't look like I rolled out of bed." },
+    { label: "Flying back to LA", q: "Flying back to LA tomorrow — comfortable, layered, looks pulled-together at LAX." },
   ];
 
-  async function go() {
-    if (!q.trim()) return;
+  async function go(prompt?: string) {
+    const text = (prompt ?? q).trim();
+    if (!text) return;
+    setQ(text);
     setLoading(true); setOutfitText(""); setError(""); setThanks("");
     try {
       const res = await fetch("/api/stylist", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ occasion: q, items, feedback }),
+        body: JSON.stringify({ occasion: text, items, feedback }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Stylist hit an error");
       setOutfitText(data.text || "");
-      // Heuristically tag items mentioned in the outfit
-      const text = (data.text || "").toLowerCase();
+      const lower = (data.text || "").toLowerCase();
       const tagged = items
-        .filter(i => text.includes(i.name.split("—")[0].trim().slice(0, 18).toLowerCase()))
+        .filter(i => lower.includes(i.name.split("—")[0].trim().slice(0, 18).toLowerCase()))
         .map(i => i.id);
       setLastTaggedIds(tagged);
     } catch (e: any) {
@@ -467,7 +239,7 @@ function Stylist({ items, feedback, onFeedback }: { items: Item[]; feedback: Fee
     }
   }
 
-  function rate(rating: "like"|"dislike"|"wore") {
+  function rate(rating: "like" | "dislike" | "wore") {
     onFeedback({ rating, occasion: q, outfitText, itemIds: lastTaggedIds, ts: Date.now() });
     const msgs = {
       like: "Got it — banked. The next one will lean this direction.",
@@ -477,205 +249,261 @@ function Stylist({ items, feedback, onFeedback }: { items: Item[]; feedback: Fee
     setThanks(msgs[rating]);
   }
 
-  return (
-    <section className="rise rise-3">
-      <div className="grid md:grid-cols-[1fr_auto] gap-3 items-baseline mb-3">
-        <div className="font-editorial italic text-tea text-lg">
-          Tell me about the occasion. The more I know your taste, the better I get.
-        </div>
-        <div className="eyebrow text-tea hidden md:block">Volume {feedback.length + 1}</div>
-      </div>
-
-      <textarea
-        value={q}
-        onChange={e => setQ(e.target.value)}
-        placeholder="Dinner Saturday in West Hollywood, going-out vibe, no leather, no jeans…"
-        className="w-full font-editorial text-[20px] italic placeholder:italic placeholder:text-tea/70 leading-snug bg-transparent border-0 border-b border-ink/20 focus:border-ink py-3 outline-none transition-colors resize-none min-h-[90px]"
-      />
-
-      <div className="flex flex-wrap gap-x-5 gap-y-2 mt-4">
-        {suggestions.map(s => (
-          <button
-            key={s.label}
-            onClick={() => setQ(s.q)}
-            className="font-editorial italic text-[15px] text-cocoa hover:text-claret transition-colors"
-          >
-            — {s.label}
-          </button>
-        ))}
-      </div>
-
-      <div className="flex items-center gap-4 mt-7">
-        <button
-          onClick={go}
-          disabled={loading || !q.trim()}
-          className="bg-ink text-cream px-7 py-3.5 text-sm tracking-[0.18em] uppercase font-medium hover:bg-soot disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-        >
-          {loading ? (
-            <span className="flex items-center"><span className="spinner" />Considering…</span>
-          ) : (
-            "Style me"
-          )}
-        </button>
-        {loading && (
-          <span className="font-editorial italic text-tea thinking">
-            Reading your closet, weighing what you've loved…
-          </span>
-        )}
-      </div>
-
-      {error && <div className="text-claret text-sm mt-4 font-editorial italic">{error}</div>}
-
-      {outfitText && (
-        <article className="mt-12 grid md:grid-cols-[auto_1fr] gap-x-10">
-          <aside className="hidden md:block">
-            <div className="eyebrow text-tea writing-mode-vertical-rl pt-2" style={{ writingMode: "vertical-rl" }}>
-              The recommendation · {new Date().toLocaleDateString("en-US", { month: "long", day: "numeric" })}
-            </div>
-          </aside>
-          <div>
-            <div className="eyebrow text-claret mb-3 md:hidden">The recommendation</div>
-            <div className="bg-paper px-7 md:px-10 py-9 md:py-12 border-y border-ink/10 outfit-prose">
-              {outfitText}
-            </div>
-            <div className="flex gap-3 mt-7 items-center flex-wrap">
-              <span className="eyebrow text-tea mr-2">How was that?</span>
-              <FeedbackPill onClick={() => rate("like")}    label="Love it" />
-              <FeedbackPill onClick={() => rate("dislike")} label="Not me" muted />
-              <FeedbackPill onClick={() => rate("wore")}    label="I wore this" accent />
-              {thanks && (
-                <span className="font-editorial italic text-claret text-base">{thanks}</span>
-              )}
-            </div>
-          </div>
-        </article>
-      )}
-    </section>
-  );
-}
-
-function FeedbackPill({ label, onClick, muted, accent }: { label: string; onClick: () => void; muted?: boolean; accent?: boolean; }) {
-  const base = "px-5 py-2 text-[13px] tracking-wider uppercase border transition-colors";
-  const tone = accent
-    ? "bg-claret text-cream border-claret hover:bg-[#5a2025]"
-    : muted
-    ? "bg-transparent text-tea border-ink/15 hover:border-ink/40 hover:text-soot"
-    : "bg-transparent text-soot border-ink/25 hover:bg-ink hover:text-cream";
-  return <button onClick={onClick} className={`${base} ${tone}`}>{label}</button>;
-}
-
-// ============================================================
-// TASTE
-// ============================================================
-function Taste({ feedback, wardrobe }: { feedback: Feedback[]; wardrobe: Item[] }) {
-  if (feedback.length === 0) {
-    return (
-      <div className="rise rise-3 py-16 text-center max-w-[480px] mx-auto">
-        <div className="eyebrow text-claret mb-4">The taste profile</div>
-        <p className="font-editorial italic text-soot text-2xl leading-snug">
-          Nothing yet — react to a few outfits and the stylist starts learning what's
-          actually <em>you</em> versus what just looks nice on paper.
-        </p>
-      </div>
-    );
-  }
-
-  const liked = feedback.filter(f => f.rating === "like" || f.rating === "wore");
-  const disliked = feedback.filter(f => f.rating === "dislike");
-  const brandCount: Record<string, number> = {};
-  const colorCount: Record<string, number> = {};
-  const vibeCount: Record<string, number> = {};
-  liked.forEach(f => f.itemIds.forEach(id => {
-    const it = wardrobe.find(x => x.id === id); if (!it) return;
-    brandCount[it.brand] = (brandCount[it.brand] ?? 0) + 1;
-    colorCount[it.colorHex] = (colorCount[it.colorHex] ?? 0) + 1;
-    it.vibe.forEach(v => vibeCount[v] = (vibeCount[v] ?? 0) + 1);
-  }));
-  const avoidance = new Set<string>();
-  disliked.forEach(f => {
-    if (/leather/i.test(f.occasion + " " + f.outfitText)) avoidance.add("leather");
-    if (/jean|denim/i.test(f.occasion)) avoidance.add("denim when she said no jeans");
-  });
-
-  const brands = Object.entries(brandCount).sort((a,b)=>b[1]-a[1]).slice(0,6);
-  const maxBrand = Math.max(...brands.map(b => b[1]), 1);
-  const vibes = Object.entries(vibeCount).sort((a,b)=>b[1]-a[1]).slice(0,5);
-  const maxVibe = Math.max(...vibes.map(v => v[1]), 1);
-  const colors = Object.entries(colorCount).sort((a,b)=>b[1]-a[1]).slice(0,8);
+  // Pick 4 items to show as the "outfit" — first 4 from tagged, fall back to seed picks
+  const outfitItems = (() => {
+    if (outfitText && lastTaggedIds.length) {
+      return items.filter(i => lastTaggedIds.includes(i.id)).slice(0, 4);
+    }
+    if (outfitText) return items.slice(0, 4);
+    return [];
+  })();
 
   return (
     <div className="rise rise-3">
-      <Stats stats={[
-        { num: liked.length, lbl: "Loved" },
-        { num: feedback.filter(f=>f.rating==="wore").length, lbl: "Actually wore" },
-        { num: disliked.length, lbl: "Not me" },
-        { num: feedback.length, lbl: "Signals total" },
-      ]} />
-      <div className="grid gap-x-12 gap-y-10 md:grid-cols-2">
-        <TasteCard title="Brands you reach for" number="01">
-          {brands.length === 0 && <Empty>No brand signal yet.</Empty>}
-          {brands.map(([b,c]) => <Bar key={b} label={b} val={c} max={maxBrand} />)}
-        </TasteCard>
-        <TasteCard title="Vibes that win" number="02">
-          {vibes.length === 0 && <Empty>No vibe signal yet.</Empty>}
-          {vibes.map(([v,c]) => <Bar key={v} label={v} val={c} max={maxVibe} />)}
-        </TasteCard>
-        <TasteCard title="Your colorway" number="03">
-          {colors.length === 0 ? <Empty>—</Empty> : (
-            <div className="flex flex-wrap gap-2 mt-1">
-              {colors.map(([c,n]) => (
-                <div
-                  key={c}
-                  className="w-9 h-9 rounded-full border border-ink/10"
-                  style={{ background: c }}
-                  title={`${n} hits`}
-                />
-              ))}
+      {/* Title block */}
+      <div className="px-6 pt-3">
+        <div className="section-num">01 · The Stylist</div>
+        <h1 className="display-title mt-2">
+          What&rsquo;s the<br />
+          <em className="not-italic">vibe?</em>
+        </h1>
+      </div>
+
+      <AccentRow />
+
+      {/* Vibe input */}
+      <div className="px-6 mt-7">
+        <textarea
+          value={q}
+          onChange={e => setQ(e.target.value)}
+          onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); go(); } }}
+          placeholder="drinks Saturday in SoHo…"
+          rows={2}
+          className="w-full bg-swatchBeige border border-terracotta/15 rounded-2xl px-4 py-3 text-[15px] placeholder:text-terracotta/40 focus:border-terracotta/40 outline-none resize-none transition-colors"
+        />
+
+        {/* Suggestion chips */}
+        <div className="mt-3 flex gap-2 overflow-x-auto no-scrollbar">
+          {chips.map((c, i) => (
+            <button
+              key={c.label}
+              onClick={() => go(c.q)}
+              className={`chip ${i === 0 ? "chip-hibiscus" : i === 1 ? "chip-citrus" : "chip-picante"} hover:opacity-90 transition-opacity`}
+            >
+              {c.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Style me button */}
+        <button
+          onClick={() => go()}
+          disabled={loading || !q.trim()}
+          className="mt-4 w-full bg-terracotta text-saltCream rounded-2xl py-3.5 text-[13px] tracking-[0.16em] uppercase font-medium hover:bg-terracotta/90 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+        >
+          {loading ? <span className="inline-flex items-center"><span className="spinner" style={{ borderTopColor: "#fff8ea", borderColor: "rgba(255,248,234,0.3)", borderTopWidth: "1.5px" }} />Considering…</span> : "Style me"}
+        </button>
+        {loading && (
+          <div className="mt-3 text-[12px] text-terracotta/60 font-serif italic thinking text-center">
+            Reading your closet, weighing what you&rsquo;ve loved…
+          </div>
+        )}
+        {error && <div className="mt-3 text-[12px] text-picante font-serif italic">{error}</div>}
+      </div>
+
+      {/* Stylist prose response */}
+      {outfitText && (
+        <>
+          <div className="px-6 mt-8">
+            <div className="section-num">02 · The recommendation</div>
+            <div className="mt-3 bg-swatchBeige rounded-2xl p-5 stylist-prose">
+              {outfitText}
+            </div>
+          </div>
+
+          {/* 4-item outfit row */}
+          {outfitItems.length > 0 && (
+            <div className="px-6 mt-6">
+              <div className="section-num">03 · Pulling from your closet</div>
+              <div className="mt-3 grid grid-cols-2 gap-3">
+                {outfitItems.map(it => <OutfitItemCard key={it.id} item={it} />)}
+              </div>
             </div>
           )}
-        </TasteCard>
-        <TasteCard title="What I won't recommend again" number="04">
-          {[...avoidance].length === 0 ? (
-            <Empty>Mark some things &ldquo;Not me&rdquo; and I&apos;ll catch the pattern.</Empty>
-          ) : (
-            <div className="font-editorial italic text-[17px] text-soot leading-relaxed">
-              {[...avoidance].map(a => <div key={a}>— {a}</div>)}
+
+          {/* Action buttons */}
+          <div className="px-6 mt-6 grid grid-cols-3 gap-2">
+            <ActionBtn label="Love it"      onClick={() => rate("like")}    tone="hibiscus" />
+            <ActionBtn label="Not me"       onClick={() => rate("dislike")} tone="ghost" />
+            <ActionBtn label="I wore this"  onClick={() => rate("wore")}    tone="picante" />
+          </div>
+          {thanks && (
+            <div className="px-6 mt-3 text-[13px] font-serif italic text-terracotta/70 text-center">
+              {thanks}
             </div>
           )}
-        </TasteCard>
+        </>
+      )}
+
+      {/* Empty state — soft prompt */}
+      {!outfitText && !loading && (
+        <div className="px-6 mt-10">
+          <div className="bg-swatchBeige rounded-2xl p-5">
+            <div className="font-serif italic text-[16px] text-terracotta/80 leading-snug">
+              Tell me where you&rsquo;re going and I&rsquo;ll pull from your closet.
+              The more you react to outfits, the sharper I get.
+            </div>
+            <div className="mt-3 text-[11px] tracking-[0.16em] uppercase text-terracotta/50 font-medium">
+              {feedback.length} signals · {items.length} pieces in rotation
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function OutfitItemCard({ item }: { item: Item }) {
+  return (
+    <div className="bg-swatchBeige rounded-2xl overflow-hidden border border-terracotta/8">
+      <div
+        className="aspect-[4/5] flex items-end justify-start p-3"
+        style={{ background: item.colorHex }}
+      >
+        <div
+          className="font-serif italic text-[12px] tracking-wide"
+          style={{ color: isDark(item.colorHex) ? "#fff8ea" : "#71241a", opacity: 0.85 }}
+        >
+          {item.brand}
+        </div>
+      </div>
+      <div className="px-3 py-2.5">
+        <div className="text-[12px] font-medium leading-tight text-terracotta truncate">{item.name}</div>
+        <div className="text-[11px] text-terracotta/55 font-serif italic mt-0.5">{item.color}</div>
       </div>
     </div>
   );
 }
-const TasteCard = ({ title, number, children }: any) => (
-  <section>
-    <div className="flex items-baseline gap-3 mb-4 pb-3 border-b border-ink/15">
-      <span className="font-serif text-[28px] font-semibold text-ink leading-none">{number}</span>
-      <h4 className="m-0 font-editorial italic text-[19px] text-soot">{title}</h4>
-    </div>
-    {children}
-  </section>
-);
-const Empty = ({ children }: any) => (
-  <div className="font-editorial italic text-tea text-[15px] py-4">{children}</div>
-);
-const Bar = ({ label, val, max }: any) => (
-  <div className="flex items-center gap-3 mb-3 text-sm">
-    <div className="w-28 shrink-0 font-editorial italic text-soot text-[15px]">{label}</div>
-    <div className="flex-1 h-px bg-ink/10 relative">
-      <div
-        className="absolute inset-y-[-1px] left-0 bg-claret"
-        style={{ width: `${(val/max)*100}%`, height: "3px", top: "-1px" }}
-      />
-    </div>
-    <div className="w-6 text-right font-editorial italic text-[13px] text-tea">{val}</div>
-  </div>
-);
+
+function ActionBtn({
+  label, onClick, tone,
+}: {
+  label: string; onClick: () => void; tone: "hibiscus" | "picante" | "ghost";
+}) {
+  const cls = tone === "picante"
+    ? "bg-picante text-saltCream border-picante hover:opacity-90"
+    : tone === "hibiscus"
+    ? "bg-hibiscus text-saltCream border-hibiscus hover:opacity-90"
+    : "bg-transparent text-terracotta border-terracotta/25 hover:border-terracotta/50";
+  return (
+    <button
+      onClick={onClick}
+      className={`rounded-full border py-2.5 text-[12px] font-medium tracking-[0.04em] transition-all ${cls}`}
+    >
+      {label}
+    </button>
+  );
+}
 
 // ============================================================
-// ADD ITEM (paste an order email)
+// CLOSET SCREEN — frame 25:2
 // ============================================================
-function AddItem({ onParsed }: { onParsed: (items: Item[]) => void }) {
+function ClosetScreen({ items, onReturn }: { items: Item[]; onReturn: (id: string) => void }) {
+  const [activeCat, setActiveCat] = useState("all");
+  const cats = ["all", ...Array.from(new Set(items.map(i => i.category)))];
+  const filtered = activeCat === "all" ? items : items.filter(i => i.category === activeCat);
+  const totalSpend = items.reduce((s, i) => s + (i.price || 0), 0);
+
+  return (
+    <div className="rise rise-3">
+      <div className="px-6 pt-3">
+        <div className="section-num">02 · The Closet</div>
+        <h1 className="display-title mt-2">
+          {items.length}<br />
+          <em className="not-italic">pieces.</em>
+        </h1>
+      </div>
+
+      <AccentRow />
+
+      {/* Stats line */}
+      <div className="px-6 mt-5 flex items-baseline gap-5">
+        <Stat n={new Set(items.map(i => i.brand)).size} l="brands" />
+        <Stat n={new Set(items.map(i => i.category)).size} l="categories" />
+        <Stat n={`$${Math.round(totalSpend)}`} l="value" />
+      </div>
+
+      {/* Category chips */}
+      <div className="px-6 mt-5 flex gap-2 overflow-x-auto no-scrollbar">
+        {cats.map((c, i) => {
+          const active = c === activeCat;
+          const tone = i === 0 ? "" : i === 1 ? "chip-hibiscus" : i === 2 ? "chip-citrus" : i === 3 ? "chip-picante" : "chip-gold";
+          return (
+            <button
+              key={c}
+              onClick={() => setActiveCat(c)}
+              className={`chip ${active ? tone : ""} ${active ? "" : "opacity-60 hover:opacity-100"} transition-opacity`}
+            >
+              {c}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Item grid */}
+      <div className="px-6 mt-5 grid grid-cols-2 gap-3">
+        {filtered.map(it => <ClosetCard key={it.id} item={it} onReturn={onReturn} />)}
+      </div>
+      {filtered.length === 0 && (
+        <div className="px-6 mt-10 text-center font-serif italic text-terracotta/50 text-base">
+          Nothing here in this filter.
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ClosetCard({ item, onReturn }: { item: Item; onReturn: (id: string) => void }) {
+  return (
+    <div className="bg-swatchBeige rounded-2xl overflow-hidden border border-terracotta/8 group">
+      <div className="aspect-[4/5] relative" style={{ background: item.colorHex }}>
+        <div
+          className="absolute bottom-3 left-3 font-serif italic text-[12px] tracking-wide"
+          style={{ color: isDark(item.colorHex) ? "#fff8ea" : "#71241a", opacity: 0.85 }}
+        >
+          {item.brand}
+        </div>
+      </div>
+      <div className="px-3 py-2.5">
+        <div className="text-[12px] font-medium leading-tight text-terracotta truncate">{item.name}</div>
+        <div className="flex items-baseline justify-between mt-0.5">
+          <div className="text-[11px] text-terracotta/55 font-serif italic">{item.color} · {item.size}</div>
+          {item.price ? <div className="text-[11px] text-terracotta/45">${item.price.toFixed(0)}</div> : null}
+        </div>
+        <button
+          onClick={() => onReturn(item.id)}
+          className="mt-2 w-full text-[10px] tracking-[0.14em] uppercase text-terracotta/45 hover:text-picante transition-colors"
+        >
+          I don&apos;t have this
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function Stat({ n, l }: { n: any; l: string }) {
+  return (
+    <div>
+      <div className="font-serif text-[20px] leading-none text-terracotta">{n}</div>
+      <div className="text-[10px] tracking-[0.14em] uppercase text-terracotta/55 mt-1 font-medium">{l}</div>
+    </div>
+  );
+}
+
+// ============================================================
+// ADD SCREEN — frame 25:74
+// ============================================================
+function AddScreen({ onParsed, onDone }: { onParsed: (items: Item[]) => void; onDone: () => void }) {
   const [emailText, setEmailText] = useState("");
   const [loading, setLoading] = useState(false);
   const [parsed, setParsed] = useState<Item[] | null>(null);
@@ -699,72 +527,273 @@ function AddItem({ onParsed }: { onParsed: (items: Item[]) => void }) {
       setLoading(false);
     }
   }
+
   function confirm() {
     if (parsed) onParsed(parsed);
     setEmailText(""); setParsed(null);
-    alert(`Added ${parsed?.length || 0} item${parsed?.length === 1 ? "" : "s"} to your closet!`);
+    onDone();
   }
 
   return (
-    <section className="rise rise-3">
-      <div className="eyebrow text-claret mb-3">Submission</div>
-      <h3 className="font-serif text-[32px] md:text-[40px] leading-tight mt-0 mb-3 font-semibold text-ink -tracking-[0.5px]">
-        Add an item by pasting an order email.
-      </h3>
-      <p className="font-editorial italic text-soot/80 text-[18px] leading-snug mb-7 max-w-[640px]">
-        Open your last Reformation, SKIMS, Free People, Selkie, Sézane, Anthropologie, or Aritzia
-        order confirmation. Select all, paste below — Claude extracts the items.
-      </p>
+    <div className="rise rise-3">
+      <div className="px-6 pt-3">
+        <div className="section-num">03 · Add an item</div>
+        <h1 className="display-title mt-2">
+          Paste an<br />
+          <em className="not-italic">order email.</em>
+        </h1>
+      </div>
 
-      <textarea
-        value={emailText}
-        onChange={e => setEmailText(e.target.value)}
-        placeholder="Paste the entire order email here…"
-        className="w-full text-[13px] font-mono resize-y min-h-[200px] bg-paper border border-ink/15 focus:border-ink/40 outline-none p-5 leading-relaxed transition-colors"
-      />
+      <AccentRow />
 
-      <div className="flex items-center gap-4 mt-5">
+      <div className="px-6 mt-7">
+        <p className="font-serif italic text-[15px] text-terracotta/75 leading-snug">
+          Open your last Reformation, SKIMS, Free People, Sézane, or Aritzia receipt.
+          Select all, paste below — I&rsquo;ll extract the pieces.
+        </p>
+
+        <textarea
+          value={emailText}
+          onChange={e => setEmailText(e.target.value)}
+          placeholder="Paste the entire order email here…"
+          className="w-full mt-4 bg-swatchBeige border border-terracotta/15 rounded-2xl px-4 py-3 text-[12px] font-mono leading-relaxed min-h-[180px] placeholder:text-terracotta/40 focus:border-terracotta/40 outline-none resize-y transition-colors"
+        />
+
         <button
           onClick={parse}
           disabled={loading || !emailText.trim()}
-          className="bg-ink text-cream px-7 py-3.5 text-sm tracking-[0.18em] uppercase font-medium hover:bg-soot disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+          className="mt-4 w-full bg-terracotta text-saltCream rounded-2xl py-3.5 text-[13px] tracking-[0.16em] uppercase font-medium hover:bg-terracotta/90 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
         >
-          {loading ? (
-            <span className="flex items-center"><span className="spinner" />Reading…</span>
-          ) : (
-            "Extract items"
-          )}
+          {loading ? <span className="inline-flex items-center"><span className="spinner" style={{ borderTopColor: "#fff8ea", borderColor: "rgba(255,248,234,0.3)", borderTopWidth: "1.5px" }} />Reading…</span> : "Extract items"}
         </button>
+
         {loading && (
-          <span className="font-editorial italic text-tea thinking">
+          <div className="mt-3 text-[12px] text-terracotta/60 font-serif italic thinking text-center">
             Parsing the order, naming the colors…
-          </span>
+          </div>
         )}
+        {error && <div className="mt-3 text-[12px] text-picante font-serif italic">{error}</div>}
       </div>
 
-      {error && <div className="text-claret text-sm mt-4 font-editorial italic">{error}</div>}
-
       {parsed && (
-        <div className="mt-12 pt-10 border-t border-ink/15">
-          <div className="flex items-baseline justify-between mb-7 flex-wrap gap-3">
-            <div>
-              <div className="eyebrow text-claret mb-2">Extracted</div>
-              <h4 className="font-serif text-[26px] m-0 font-semibold text-ink">
-                Found {parsed.length} item{parsed.length === 1 ? "" : "s"}.
-              </h4>
-            </div>
-            <button
-              onClick={confirm}
-              className="bg-ink text-cream px-6 py-3 text-sm tracking-[0.18em] uppercase font-medium hover:bg-soot transition-colors"
-            >
-              Add to my closet
-            </button>
+        <div className="px-6 mt-8">
+          <div className="section-num">04 · Found {parsed.length} item{parsed.length === 1 ? "" : "s"}</div>
+          <div className="mt-3 grid grid-cols-2 gap-3">
+            {parsed.map(it => <OutfitItemCard key={it.id} item={it} />)}
           </div>
-          <div className="grid gap-5 md:gap-6" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(230px, 1fr))" }}>
-            {parsed.map(item => <Card key={item.id} item={item} />)}
-          </div>
+          <button
+            onClick={confirm}
+            className="mt-4 w-full bg-citrus text-terracotta rounded-2xl py-3.5 text-[13px] tracking-[0.16em] uppercase font-medium hover:opacity-90 transition-opacity"
+          >
+            Add to my closet
+          </button>
         </div>
       )}
-    </section>
+
+      {/* Helper chips */}
+      {!parsed && !loading && (
+        <div className="px-6 mt-6 flex flex-wrap gap-2">
+          <span className="chip chip-hibiscus">Reformation</span>
+          <span className="chip chip-citrus">Free People</span>
+          <span className="chip chip-picante">SKIMS</span>
+          <span className="chip chip-gold">Sézane</span>
+        </div>
+      )}
+    </div>
   );
+}
+
+// ============================================================
+// RETURN SCREEN — frame 25:97
+// ============================================================
+function ReturnScreen({ items, onRestore }: { items: Item[]; onRestore: (id: string) => void }) {
+  return (
+    <div className="rise rise-3">
+      <div className="px-6 pt-3">
+        <div className="section-num">04 · Returns</div>
+        <h1 className="display-title mt-2">
+          Sent<br />
+          <em className="not-italic">back.</em>
+        </h1>
+      </div>
+
+      <AccentRow />
+
+      <div className="px-6 mt-6">
+        <p className="font-serif italic text-[15px] text-terracotta/75 leading-snug">
+          Pieces you returned or no longer have. The stylist won&rsquo;t suggest these.
+        </p>
+      </div>
+
+      {items.length === 0 ? (
+        <div className="px-6 mt-10 bg-swatchBeige rounded-2xl mx-6 p-6 text-center">
+          <div className="font-serif italic text-[16px] text-terracotta/70 leading-snug">
+            No returns yet. Tap &ldquo;I don&rsquo;t have this&rdquo; on a closet card to move it here.
+          </div>
+        </div>
+      ) : (
+        <div className="px-6 mt-5 grid grid-cols-2 gap-3">
+          {items.map(it => <ReturnCard key={it.id} item={it} onRestore={onRestore} />)}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ReturnCard({ item, onRestore }: { item: Item; onRestore: (id: string) => void }) {
+  return (
+    <div className="bg-swatchBeige rounded-2xl overflow-hidden border border-terracotta/8 opacity-70">
+      <div className="aspect-[4/5] relative" style={{ background: item.colorHex }}>
+        <div className="absolute inset-0 bg-saltCream/40" />
+        <div
+          className="absolute bottom-3 left-3 font-serif italic text-[12px] tracking-wide"
+          style={{ color: isDark(item.colorHex) ? "#fff8ea" : "#71241a", opacity: 0.85 }}
+        >
+          {item.brand}
+        </div>
+        <div className="absolute top-3 right-3 chip chip-picante text-[10px] py-1 px-2.5">
+          returned
+        </div>
+      </div>
+      <div className="px-3 py-2.5">
+        <div className="text-[12px] font-medium leading-tight text-terracotta truncate">{item.name}</div>
+        <div className="text-[11px] text-terracotta/55 font-serif italic mt-0.5">{item.color}</div>
+        <button
+          onClick={() => onRestore(item.id)}
+          className="mt-2 w-full text-[10px] tracking-[0.14em] uppercase text-terracotta/45 hover:text-citrus transition-colors"
+        >
+          Restore
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================
+// TASTE SCREEN — frame 25:152
+// ============================================================
+function TasteScreen({ feedback, wardrobe }: { feedback: Feedback[]; wardrobe: Item[] }) {
+  const liked = feedback.filter(f => f.rating === "like" || f.rating === "wore");
+  const disliked = feedback.filter(f => f.rating === "dislike");
+
+  const brandCount: Record<string, number> = {};
+  const colorCount: Record<string, number> = {};
+  const vibeCount: Record<string, number> = {};
+  liked.forEach(f => f.itemIds.forEach(id => {
+    const it = wardrobe.find(x => x.id === id); if (!it) return;
+    brandCount[it.brand] = (brandCount[it.brand] ?? 0) + 1;
+    colorCount[it.colorHex] = (colorCount[it.colorHex] ?? 0) + 1;
+    it.vibe.forEach(v => vibeCount[v] = (vibeCount[v] ?? 0) + 1);
+  }));
+
+  // Default seed vibes/brands so the screen looks alive even pre-feedback
+  const seedVibes = ["casual", "athleisure", "elevated"];
+  const vibes = Object.entries(vibeCount).sort((a,b)=>b[1]-a[1]).slice(0,3);
+  const displayVibes = vibes.length ? vibes.map(([v]) => v) : seedVibes;
+
+  const brands = Object.entries(brandCount).sort((a,b)=>b[1]-a[1]).slice(0,4);
+  const seedBrands = ["Reformation", "Alo Yoga", "Free People", "SKIMS"];
+  const displayBrands = brands.length ? brands.map(([b]) => b) : seedBrands;
+
+  const colors = Object.entries(colorCount).sort((a,b)=>b[1]-a[1]).slice(0,8);
+  const seedColors = ["#0a0a0a", "#5a3e2a", "#c9a37a", "#f5ecd9", "#2a3552", "#d4b896"];
+  const displayColors = colors.length ? colors.map(([c]) => c) : seedColors;
+
+  const avoidance: string[] = [];
+  disliked.forEach(f => {
+    const blob = (f.occasion + " " + f.outfitText).toLowerCase();
+    if (/leather/.test(blob) && !avoidance.includes("leather")) avoidance.push("leather");
+    if (/(jean|denim)/.test(f.occasion.toLowerCase()) && !avoidance.includes("denim when she said no jeans")) {
+      avoidance.push("denim when she said no jeans");
+    }
+  });
+
+  return (
+    <div className="rise rise-3">
+      <div className="px-6 pt-3">
+        <div className="section-num">05 · Your Taste</div>
+        <h1 className="display-title mt-2">
+          What you<br />
+          <em className="not-italic">actually wear.</em>
+        </h1>
+      </div>
+
+      <AccentRow />
+
+      <div className="px-6 mt-5 flex items-baseline gap-5">
+        <Stat n={liked.length} l="loved" />
+        <Stat n={feedback.filter(f => f.rating === "wore").length} l="worn" />
+        <Stat n={disliked.length} l="not me" />
+      </div>
+
+      {/* Section 01 — brands */}
+      <div className="px-6 mt-7">
+        <div className="text-[11px] tracking-[0.18em] uppercase text-terracotta/55 font-medium">01 · Brands you reach for</div>
+        <div className="mt-2 flex flex-wrap gap-2">
+          {displayBrands.map((b, i) => (
+            <span
+              key={b}
+              className={`chip ${i === 0 ? "chip-hibiscus" : i === 1 ? "chip-citrus" : i === 2 ? "chip-picante" : "chip-gold"}`}
+            >
+              {b}
+            </span>
+          ))}
+        </div>
+      </div>
+
+      {/* Section 02 — vibes */}
+      <div className="px-6 mt-6">
+        <div className="text-[11px] tracking-[0.18em] uppercase text-terracotta/55 font-medium">02 · Vibes that win</div>
+        <div className="mt-2 flex flex-wrap gap-2">
+          {displayVibes.map((v, i) => (
+            <span
+              key={v}
+              className={`chip ${i === 0 ? "chip-citrus" : i === 1 ? "chip-hibiscus" : "chip-gold"}`}
+            >
+              {v}
+            </span>
+          ))}
+        </div>
+      </div>
+
+      {/* Section 03 — colorway */}
+      <div className="px-6 mt-6">
+        <div className="text-[11px] tracking-[0.18em] uppercase text-terracotta/55 font-medium">03 · Your colorway</div>
+        <div className="mt-3 flex flex-wrap gap-2">
+          {displayColors.map(c => (
+            <div
+              key={c}
+              className="w-9 h-9 rounded-full border border-terracotta/15"
+              style={{ background: c }}
+            />
+          ))}
+        </div>
+      </div>
+
+      {/* Section 04 — what I won't recommend */}
+      <div className="px-6 mt-6">
+        <div className="text-[11px] tracking-[0.18em] uppercase text-terracotta/55 font-medium">04 · What I won&rsquo;t suggest</div>
+        <div className="mt-2 bg-swatchBeige rounded-2xl p-4">
+          {avoidance.length === 0 ? (
+            <div className="font-serif italic text-[14px] text-terracotta/65 leading-snug">
+              Nothing yet. Mark a few outfits &ldquo;Not me&rdquo; and I&rsquo;ll catch the pattern.
+            </div>
+          ) : (
+            <div className="font-serif italic text-[15px] text-terracotta/85 leading-relaxed">
+              {avoidance.map(a => <div key={a}>— {a}</div>)}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================
+// UTIL
+// ============================================================
+function isDark(hex: string): boolean {
+  const n = parseInt(hex.replace("#", ""), 16);
+  const r = (n >> 16) & 0xff, g = (n >> 8) & 0xff, b = n & 0xff;
+  return (r * 299 + g * 587 + b * 114) / 1000 < 140;
 }
