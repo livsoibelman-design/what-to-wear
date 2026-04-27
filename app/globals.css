@@ -27,7 +27,7 @@ body {
   text-rendering: optimizeLegibility;
 }
 
-/* Mobile-first phone shell — 390px column centered on desktop, edge-to-edge on mobile */
+/* Mobile-first phone shell */
 .phone-shell {
   width: 100%;
   max-width: 390px;
@@ -35,30 +35,34 @@ body {
   min-height: 100vh;
   position: relative;
   background: var(--salt-cream);
-  padding-bottom: 80px; /* room for bottom nav */
+  padding-bottom: 92px;
 }
 
-/* Wordmark — DM Serif Display italic */
+/* WHAT TO WEAR wordmark — uppercase picante, heavy serif */
 .wordmark {
   font-family: var(--font-dm-serif), Georgia, serif;
-  font-style: italic;
-  font-size: 22px;
+  font-style: normal;
+  font-size: 14px;
   line-height: 1;
-  color: var(--terracotta);
-  letter-spacing: -0.01em;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--picante);
+  font-weight: 400;
 }
 
-/* Display title — DM Serif Display, large */
+/* Display title — DM Serif, ALL CAPS, large + heavy */
 .display-title {
   font-family: var(--font-dm-serif), Georgia, serif;
   font-style: normal;
-  font-size: 40px;
-  line-height: 0.95;
-  letter-spacing: -0.02em;
+  font-size: 38px;
+  line-height: 0.92;
+  letter-spacing: -0.005em;
+  text-transform: uppercase;
   color: var(--terracotta);
+  font-weight: 400;
 }
 
-/* Eyebrow / section number */
+/* Section eyebrows */
 .eyebrow {
   font-family: var(--font-inter), system-ui, sans-serif;
   font-size: 11px;
@@ -69,33 +73,42 @@ body {
   opacity: 0.65;
 }
 
-/* Section number — large, serif */
+/* Section number — pre-title */
 .section-num {
-  font-family: var(--font-dm-serif), Georgia, serif;
-  font-size: 13px;
-  letter-spacing: 0.04em;
+  font-family: var(--font-inter), system-ui, sans-serif;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
   color: var(--terracotta);
   opacity: 0.55;
 }
 
-/* Stylist prose — DM Serif Display body, italic */
+/* Eyebrow with star prefix */
+.eyebrow-star::before {
+  content: "★ ";
+  color: var(--picante);
+}
+
+/* Stylist prose — DM Serif italic body */
 .stylist-prose {
   font-family: var(--font-dm-serif), Georgia, serif;
+  font-style: italic;
   font-size: 17px;
-  line-height: 1.45;
+  line-height: 1.4;
   color: var(--terracotta);
   white-space: pre-wrap;
 }
 
-/* Color accent row — three swatches that anchor each screen */
+/* Color accent row */
 .accent-row {
   display: flex;
   gap: 6px;
   align-items: center;
 }
 .accent-dot {
-  width: 14px;
-  height: 14px;
+  width: 12px;
+  height: 12px;
   border-radius: 999px;
 }
 .accent-bar {
@@ -105,7 +118,7 @@ body {
   opacity: 0.18;
 }
 
-/* Bottom nav line + active dot */
+/* Bottom nav line */
 .nav-line {
   position: absolute;
   left: 24px;
@@ -114,32 +127,123 @@ body {
   background: var(--terracotta);
   opacity: 0.18;
 }
-.nav-active-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 999px;
-  background: var(--picante);
-}
 
-/* Chip — pill with colored fill */
+/* Chip — outlined pill (default) */
 .chip {
   display: inline-flex;
   align-items: center;
-  padding: 6px 14px;
+  padding: 5px 12px;
   border-radius: 999px;
   font-family: var(--font-inter), system-ui, sans-serif;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 500;
-  letter-spacing: 0.02em;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
   color: var(--terracotta);
-  background: var(--swatch-beige);
-  border: 1px solid rgba(113, 36, 26, 0.12);
+  background: transparent;
+  border: 1px solid rgba(113, 36, 26, 0.35);
   white-space: nowrap;
 }
-.chip-hibiscus { background: var(--hibiscus); color: #fff8ea; border-color: transparent; }
-.chip-citrus   { background: var(--citrus);   color: var(--terracotta); border-color: transparent; }
-.chip-picante  { background: var(--picante);  color: #fff8ea; border-color: transparent; }
-.chip-gold     { background: var(--gold);     color: var(--terracotta); border-color: transparent; }
+.chip-active   { background: var(--swatch-beige); border-color: rgba(113, 36, 26, 0.55); }
+.chip-hibiscus { background: var(--hibiscus); color: #fff8ea; border-color: var(--hibiscus); }
+.chip-citrus   { background: var(--citrus);   color: var(--terracotta); border-color: var(--citrus); }
+.chip-picante  { background: var(--picante);  color: #fff8ea; border-color: var(--picante); }
+.chip-gold     { background: var(--gold);     color: var(--terracotta); border-color: var(--gold); }
+
+/* Swatch (small color square used in list rows) */
+.swatch {
+  width: 44px;
+  height: 44px;
+  border-radius: 6px;
+  flex-shrink: 0;
+  border: 1px solid rgba(113, 36, 26, 0.1);
+}
+.swatch-lg {
+  width: 56px;
+  height: 56px;
+  border-radius: 8px;
+  flex-shrink: 0;
+  border: 1px solid rgba(113, 36, 26, 0.1);
+}
+
+/* List row — used in closet, returns, stylist look */
+.list-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid rgba(113, 36, 26, 0.08);
+}
+
+/* Progress bar (Taste brands) */
+.bar-track {
+  flex: 1;
+  height: 4px;
+  border-radius: 999px;
+  background: rgba(113, 36, 26, 0.12);
+  overflow: hidden;
+}
+.bar-fill {
+  height: 100%;
+  border-radius: 999px;
+}
+
+/* Inline GO textarea wrapper */
+.go-wrap {
+  position: relative;
+  background: var(--swatch-beige);
+  border: 1px solid rgba(113, 36, 26, 0.15);
+  border-radius: 16px;
+  padding: 14px 64px 14px 16px;
+}
+.go-wrap textarea {
+  width: 100%;
+  background: transparent;
+  border: none;
+  outline: none;
+  resize: none;
+  font-size: 15px;
+  color: var(--terracotta);
+  font-family: inherit;
+  min-height: 40px;
+  line-height: 1.4;
+}
+.go-wrap textarea::placeholder { color: rgba(113, 36, 26, 0.45); }
+.go-btn {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  height: 36px;
+  padding: 0 18px;
+  border-radius: 999px;
+  background: var(--picante);
+  color: #fff8ea;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  border: none;
+}
+.go-btn:disabled { opacity: 0.4; }
+
+/* Big primary CTA (Add screen) */
+.cta-primary {
+  width: 100%;
+  background: var(--picante);
+  color: #fff8ea;
+  border-radius: 16px;
+  padding: 16px;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  border: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+.cta-primary:disabled { opacity: 0.4; }
 
 /* Spinner */
 .spinner {
