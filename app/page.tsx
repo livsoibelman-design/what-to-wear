@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 
 // ============================================================
 // TYPES
@@ -28,7 +28,16 @@ type Feedback = {
   ts: number;
 };
 
+type StylistMemory = {
+  q: string;
+  outfitText: string;
+  taggedIds: string[];
+  ts: number;
+};
+
 type Tab = "stylist" | "closet" | "add" | "returned" | "taste";
+
+type Toast = { id: number; msg: string; undo?: () => void } | null;
 
 // ============================================================
 // SEED CLOSET — Liv's actual order history
@@ -53,6 +62,8 @@ const SEED_WARDROBE: Item[] = [
 
 const STORAGE_KEY = "wtw_state_v1";
 
+const EMPTY_STYLIST_MEMORY: StylistMemory = { q: "", outfitText: "", taggedIds: [], ts: 0 };
+
 // ============================================================
 // MAIN
 // ============================================================
@@ -60,8 +71,11 @@ export default function Page() {
   const [wardrobe, setWardrobe] = useState<Item[]>([]);
   const [returned, setReturned] = useState<Set<string>>(new Set());
   const [feedback, setFeedback] = useState<Feedback[]>([]);
+  const [stylistMemory, setStylistMemory] = useState<StylistMemory>(EMPTY_STYLIST_MEMORY);
   const [tab, setTab] = useState<Tab>("stylist");
   const [hydrated, setHydrated] = useState(false);
+  const [toast, setToast] = useState<Toast>(null);
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     try {
@@ -71,6 +85,7 @@ export default function Page() {
         setWardrobe(s.wardrobe ?? SEED_WARDROBE);
         setReturned(new Set(s.returned ?? []));
         setFeedback(s.feedback ?? []);
+        setStylistMemory(s.stylistMemory ?? EMPTY_STYLIST_MEMORY);
       } else {
         setWardrobe(SEED_WARDROBE);
       }
@@ -83,21 +98,50 @@ export default function Page() {
   useEffect(() => {
     if (!hydrated) return;
     localStorage.setItem(STORAGE_KEY, JSON.stringify({
-      wardrobe, returned: [...returned], feedback,
+      wardrobe, returned: [...returned], feedback, stylistMemory,
     }));
-  }, [wardrobe, returned, feedback, hydrated]);
+  }, [wardrobe, returned, feedback, stylistMemory, hydrated]);
 
   const activeItems = useMemo(() => wardrobe.filter(i => !returned.has(i.id)), [wardrobe, returned]);
   const returnedItems = useMemo(() => wardrobe.filter(i => returned.has(i.id)), [wardrobe, returned]);
 
-  function markReturned(id: string) { const n = new Set(returned); n.add(id); setReturned(n); }
-  function restoreItem(id: string)  { const n = new Set(returned); n.delete(id); setReturned(n); }
+  function showToast(msg: string, undo?: () => void) {
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+    const id = Date.now();
+    setToast({ id, msg, undo });
+    toastTimer.current = setTimeout(() => {
+      setToast(t => (t && t.id === id ? null : t));
+    }, 5000);
+  }
+
+  function markReturned(id: string) {
+    const n = new Set(returned);
+    n.add(id);
+    setReturned(n);
+    showToast("Moved to Returns.", () => {
+      setReturned(prev => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+      setToast(null);
+    });
+  }
+  function restoreItem(id: string) {
+    const n = new Set(returned);
+    n.delete(id);
+    setReturned(n);
+    showToast("Back in rotation.");
+  }
   function addItems(newItems: Item[]) {
     const existing = new Set(wardrobe.map(i => i.id));
     const stamped = newItems.map(i => ({ ...i, id: existing.has(i.id) ? i.id + "-" + Date.now() : i.id }));
     setWardrobe([...wardrobe, ...stamped]);
+    showToast(`Added ${stamped.length} piece${stamped.length === 1 ? "" : "s"}.`);
   }
   function recordFeedback(f: Feedback) { setFeedback([...feedback, f]); }
+  function rememberStylist(m: StylistMemory) { setStylistMemory(m); }
+  function clearStylist() { setStylistMemory(EMPTY_STYLIST_MEMORY); }
 
   if (!hydrated) {
     return (
@@ -110,18 +154,41 @@ export default function Page() {
   return (
     <div className="phone-shell">
       <Wordmark />
-      {tab === "stylist"  && <StylistScreen items={activeItems} feedback={feedback} onFeedback={recordFeedback} />}
-      {tab === "closet"   && <ClosetScreen items={activeItems} onReturn={markReturned} />}
-      {tab === "add"      && <AddScreen onParsed={addItems} onDone={() => setTab("closet")} />}
-      {tab === "returned" && <ReturnScreen items={returnedItems} onRestore={restoreItem} />}
-      {tab === "taste"    && <TasteScreen feedback={feedback} wardrobe={wardrobe} />}
+      {tab === "stylist" && (
+        <StylistScreen
+          items={activeItems}
+          feedback={feedback}
+          memory={stylistMemory}
+          onRemember={rememberStylist}
+          onClearMemory={clearStylist}
+          onFeedback={recordFeedback}
+          onGoToAdd={() => setTab("add")}
+        />
+      )}
+      {tab === "closet" && (
+        <ClosetScreen
+          items={activeItems}
+          onReturn={markReturned}
+          onGoToAdd={() => setTab("add")}
+        />
+      )}
+      {tab === "add" && (
+        <AddScreen onParsed={addItems} onDone={() => setTab("closet")} />
+      )}
+      {tab === "returned" && (
+        <ReturnScreen items={returnedItems} onRestore={restoreItem} />
+      )}
+      {tab === "taste" && (
+        <TasteScreen feedback={feedback} wardrobe={wardrobe} />
+      )}
       <BottomNav tab={tab} setTab={setTab} />
+      {toast && <ToastBar toast={toast} onDismiss={() => setToast(null)} />}
     </div>
   );
 }
 
 // ============================================================
-// SHARED — wordmark, color accent row, bottom nav
+// SHARED — wordmark, accent row, bottom nav, toast
 // ============================================================
 function Wordmark() {
   return (
@@ -192,20 +259,45 @@ function BottomNav({ tab, setTab }: { tab: Tab; setTab: (t: Tab) => void }) {
   );
 }
 
+function ToastBar({ toast, onDismiss }: { toast: NonNullable<Toast>; onDismiss: () => void }) {
+  return (
+    <div className="fixed left-0 right-0 bottom-[88px] flex justify-center pointer-events-none px-4 z-50">
+      <div className="bg-terracotta text-saltCream rounded-full pl-5 pr-2 py-2 text-[13px] flex items-center gap-3 shadow-lg pointer-events-auto max-w-[360px]">
+        <span className="font-medium">{toast.msg}</span>
+        {toast.undo && (
+          <button
+            onClick={() => { toast.undo!(); onDismiss(); }}
+            className="bg-saltCream/15 hover:bg-saltCream/25 rounded-full px-3 py-1 text-[11px] tracking-[0.14em] uppercase font-medium transition-colors"
+          >
+            Undo
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ============================================================
 // STYLIST SCREEN — frame 26:2 spec
 // ============================================================
 function StylistScreen({
-  items, feedback, onFeedback,
+  items, feedback, memory, onRemember, onClearMemory, onFeedback, onGoToAdd,
 }: {
-  items: Item[]; feedback: Feedback[]; onFeedback: (f: Feedback) => void;
+  items: Item[];
+  feedback: Feedback[];
+  memory: StylistMemory;
+  onRemember: (m: StylistMemory) => void;
+  onClearMemory: () => void;
+  onFeedback: (f: Feedback) => void;
+  onGoToAdd: () => void;
 }) {
-  const [q, setQ] = useState("");
+  const [q, setQ] = useState(memory.q);
   const [loading, setLoading] = useState(false);
-  const [outfitText, setOutfitText] = useState("");
   const [error, setError] = useState("");
-  const [lastTaggedIds, setLastTaggedIds] = useState<string[]>([]);
   const [thanks, setThanks] = useState("");
+
+  const outfitText = memory.outfitText;
+  const lastTaggedIds = memory.taggedIds;
 
   const chips = [
     { label: "Drinks Saturday", q: "Drinks Saturday in SoHo, going out, elevated but easy." },
@@ -216,8 +308,12 @@ function StylistScreen({
   async function go(prompt?: string) {
     const text = (prompt ?? q).trim();
     if (!text) return;
+    if (items.length === 0) {
+      setError("Your closet is empty — add a piece first.");
+      return;
+    }
     setQ(text);
-    setLoading(true); setOutfitText(""); setError(""); setThanks("");
+    setLoading(true); setError(""); setThanks("");
     try {
       const res = await fetch("/api/stylist", {
         method: "POST",
@@ -226,12 +322,12 @@ function StylistScreen({
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Stylist hit an error");
-      setOutfitText(data.text || "");
-      const lower = (data.text || "").toLowerCase();
+      const txt = data.text || "";
+      const lower = txt.toLowerCase();
       const tagged = items
         .filter(i => lower.includes(i.name.split("—")[0].trim().slice(0, 18).toLowerCase()))
         .map(i => i.id);
-      setLastTaggedIds(tagged);
+      onRemember({ q: text, outfitText: txt, taggedIds: tagged, ts: Date.now() });
     } catch (e: any) {
       setError(e.message);
     } finally {
@@ -249,14 +345,22 @@ function StylistScreen({
     setThanks(msgs[rating]);
   }
 
-  // Pick 4 items to show as the "outfit" — first 4 from tagged, fall back to seed picks
-  const outfitItems = (() => {
-    if (outfitText && lastTaggedIds.length) {
-      return items.filter(i => lastTaggedIds.includes(i.id)).slice(0, 4);
-    }
-    if (outfitText) return items.slice(0, 4);
-    return [];
-  })();
+  // Outfit composition: aim for one item per category (top, bottom, shoe, +1)
+  const outfitItems = useMemo(() => {
+    if (!outfitText) return [];
+    const tagged = items.filter(i => lastTaggedIds.includes(i.id));
+    const pool = tagged.length ? tagged : items;
+    return composeOutfit(pool, items, q);
+  }, [outfitText, lastTaggedIds, items, q]);
+
+  // Editing the prompt clears the memory
+  function onPromptChange(next: string) {
+    setQ(next);
+    if (memory.outfitText) onClearMemory();
+    setThanks("");
+  }
+
+  const empty = items.length === 0;
 
   return (
     <div className="rise rise-3">
@@ -271,96 +375,173 @@ function StylistScreen({
 
       <AccentRow />
 
-      {/* Vibe input */}
-      <div className="px-6 mt-7">
-        <textarea
-          value={q}
-          onChange={e => setQ(e.target.value)}
-          onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); go(); } }}
-          placeholder="drinks Saturday in SoHo…"
-          rows={2}
-          className="w-full bg-swatchBeige border border-terracotta/15 rounded-2xl px-4 py-3 text-[15px] placeholder:text-terracotta/40 focus:border-terracotta/40 outline-none resize-none transition-colors"
-        />
-
-        {/* Suggestion chips */}
-        <div className="mt-3 flex gap-2 overflow-x-auto no-scrollbar">
-          {chips.map((c, i) => (
+      {empty && (
+        <div className="px-6 mt-7">
+          <div className="bg-swatchBeige rounded-2xl p-5">
+            <div className="font-serif italic text-[16px] text-terracotta/80 leading-snug">
+              Your closet is empty. Add a piece and I&rsquo;ll start styling.
+            </div>
             <button
-              key={c.label}
-              onClick={() => go(c.q)}
-              className={`chip ${i === 0 ? "chip-hibiscus" : i === 1 ? "chip-citrus" : "chip-picante"} hover:opacity-90 transition-opacity`}
+              onClick={onGoToAdd}
+              className="mt-4 w-full bg-terracotta text-saltCream rounded-2xl py-3 text-[12px] tracking-[0.16em] uppercase font-medium hover:bg-terracotta/90 transition-colors"
             >
-              {c.label}
+              Add an item
             </button>
-          ))}
+          </div>
         </div>
+      )}
 
-        {/* Style me button */}
-        <button
-          onClick={() => go()}
-          disabled={loading || !q.trim()}
-          className="mt-4 w-full bg-terracotta text-saltCream rounded-2xl py-3.5 text-[13px] tracking-[0.16em] uppercase font-medium hover:bg-terracotta/90 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-        >
-          {loading ? <span className="inline-flex items-center"><span className="spinner" style={{ borderTopColor: "#fff8ea", borderColor: "rgba(255,248,234,0.3)", borderTopWidth: "1.5px" }} />Considering…</span> : "Style me"}
-        </button>
-        {loading && (
-          <div className="mt-3 text-[12px] text-terracotta/60 font-serif italic thinking text-center">
-            Reading your closet, weighing what you&rsquo;ve loved…
-          </div>
-        )}
-        {error && <div className="mt-3 text-[12px] text-picante font-serif italic">{error}</div>}
-      </div>
-
-      {/* Stylist prose response */}
-      {outfitText && (
+      {!empty && (
         <>
-          <div className="px-6 mt-8">
-            <div className="section-num">02 · The recommendation</div>
-            <div className="mt-3 bg-swatchBeige rounded-2xl p-5 stylist-prose">
-              {outfitText}
+          {/* Vibe input */}
+          <div className="px-6 mt-7">
+            <textarea
+              value={q}
+              onChange={e => onPromptChange(e.target.value)}
+              onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); go(); } }}
+              placeholder="drinks Saturday in SoHo…"
+              rows={2}
+              className="w-full bg-swatchBeige border border-terracotta/15 rounded-2xl px-4 py-3 text-[15px] placeholder:text-terracotta/40 focus:border-terracotta/40 outline-none resize-none transition-colors"
+            />
+
+            {/* Suggestion chips */}
+            <div className="mt-3 flex gap-2 overflow-x-auto no-scrollbar">
+              {chips.map((c, i) => (
+                <button
+                  key={c.label}
+                  onClick={() => go(c.q)}
+                  className={`chip ${i === 0 ? "chip-hibiscus" : i === 1 ? "chip-citrus" : "chip-picante"} hover:opacity-90 transition-opacity`}
+                >
+                  {c.label}
+                </button>
+              ))}
             </div>
+
+            {/* Style me button */}
+            <button
+              onClick={() => go()}
+              disabled={loading || !q.trim()}
+              className="mt-4 w-full bg-terracotta text-saltCream rounded-2xl py-3.5 text-[13px] tracking-[0.16em] uppercase font-medium hover:bg-terracotta/90 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            >
+              {loading ? <span className="inline-flex items-center"><span className="spinner" style={{ borderTopColor: "#fff8ea", borderColor: "rgba(255,248,234,0.3)", borderTopWidth: "1.5px" }} />Considering…</span> : "Style me"}
+            </button>
+            {loading && (
+              <div className="mt-3 text-[12px] text-terracotta/60 font-serif italic thinking text-center">
+                Reading your closet, weighing what you&rsquo;ve loved…
+              </div>
+            )}
+            {error && <div className="mt-3 text-[12px] text-picante font-serif italic">{error}</div>}
           </div>
 
-          {/* 4-item outfit row */}
-          {outfitItems.length > 0 && (
-            <div className="px-6 mt-6">
-              <div className="section-num">03 · Pulling from your closet</div>
-              <div className="mt-3 grid grid-cols-2 gap-3">
-                {outfitItems.map(it => <OutfitItemCard key={it.id} item={it} />)}
+          {/* Stylist prose response */}
+          {outfitText && (
+            <>
+              <div className="px-6 mt-8">
+                <div className="section-num">02 · The recommendation</div>
+                <div className="mt-3 bg-swatchBeige rounded-2xl p-5 stylist-prose">
+                  {outfitText}
+                </div>
               </div>
-            </div>
+
+              {/* 4-item outfit row */}
+              {outfitItems.length > 0 && (
+                <div className="px-6 mt-6">
+                  <div className="section-num">03 · Pulling from your closet</div>
+                  <div className="mt-3 grid grid-cols-2 gap-3">
+                    {outfitItems.map(it => <OutfitItemCard key={it.id} item={it} />)}
+                  </div>
+                </div>
+              )}
+
+              {/* Action buttons */}
+              <div className="px-6 mt-6 grid grid-cols-3 gap-2">
+                <ActionBtn label="Love it"      onClick={() => rate("like")}    tone="hibiscus" />
+                <ActionBtn label="Not me"       onClick={() => rate("dislike")} tone="ghost" />
+                <ActionBtn label="I wore this"  onClick={() => rate("wore")}    tone="picante" />
+              </div>
+              {thanks && (
+                <div className="px-6 mt-3 text-[13px] font-serif italic text-terracotta/70 text-center">
+                  {thanks}
+                </div>
+              )}
+            </>
           )}
 
-          {/* Action buttons */}
-          <div className="px-6 mt-6 grid grid-cols-3 gap-2">
-            <ActionBtn label="Love it"      onClick={() => rate("like")}    tone="hibiscus" />
-            <ActionBtn label="Not me"       onClick={() => rate("dislike")} tone="ghost" />
-            <ActionBtn label="I wore this"  onClick={() => rate("wore")}    tone="picante" />
-          </div>
-          {thanks && (
-            <div className="px-6 mt-3 text-[13px] font-serif italic text-terracotta/70 text-center">
-              {thanks}
+          {/* Empty state — soft prompt */}
+          {!outfitText && !loading && (
+            <div className="px-6 mt-10">
+              <div className="bg-swatchBeige rounded-2xl p-5">
+                <div className="font-serif italic text-[16px] text-terracotta/80 leading-snug">
+                  Tell me where you&rsquo;re going and I&rsquo;ll pull from your closet.
+                  The more you react to outfits, the sharper I get.
+                </div>
+                <div className="mt-3 text-[11px] tracking-[0.16em] uppercase text-terracotta/50 font-medium">
+                  {feedback.length} signals · {items.length} pieces in rotation
+                </div>
+              </div>
             </div>
           )}
         </>
       )}
-
-      {/* Empty state — soft prompt */}
-      {!outfitText && !loading && (
-        <div className="px-6 mt-10">
-          <div className="bg-swatchBeige rounded-2xl p-5">
-            <div className="font-serif italic text-[16px] text-terracotta/80 leading-snug">
-              Tell me where you&rsquo;re going and I&rsquo;ll pull from your closet.
-              The more you react to outfits, the sharper I get.
-            </div>
-            <div className="mt-3 text-[11px] tracking-[0.16em] uppercase text-terracotta/50 font-medium">
-              {feedback.length} signals · {items.length} pieces in rotation
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
+}
+
+// Compose a balanced outfit: try one per category (top, bottom, shoe, plus one extra).
+// Bias toward items whose vibes overlap any vibe word found in the prompt.
+function composeOutfit(pool: Item[], allItems: Item[], prompt: string): Item[] {
+  const promptLower = prompt.toLowerCase();
+  const vibeWords = ["casual", "elevated", "going-out", "going out", "athleisure"];
+  const matchedVibes = vibeWords
+    .filter(v => promptLower.includes(v))
+    .map(v => v.replace(" ", "-"));
+
+  function score(it: Item): number {
+    if (!matchedVibes.length) return 0;
+    return it.vibe.filter(v => matchedVibes.includes(v)).length;
+  }
+
+  function pickBest(candidates: Item[]): Item | undefined {
+    if (!candidates.length) return undefined;
+    return [...candidates].sort((a, b) => score(b) - score(a))[0];
+  }
+
+  const result: Item[] = [];
+  const usedIds = new Set<string>();
+  const need = ["top", "bottom", "shoe"];
+
+  for (const cat of need) {
+    const fromPool = pool.filter(i => i.category === cat && !usedIds.has(i.id));
+    let chosen = pickBest(fromPool);
+    if (!chosen) {
+      const fromAll = allItems.filter(i => i.category === cat && !usedIds.has(i.id));
+      chosen = pickBest(fromAll);
+    }
+    if (chosen) {
+      result.push(chosen);
+      usedIds.add(chosen.id);
+    }
+  }
+
+  // Plus one — outerwear, activewear, accessory, or whatever's left in pool
+  const extras = pool.filter(i => !usedIds.has(i.id));
+  const extra = pickBest(extras);
+  if (extra) {
+    result.push(extra);
+    usedIds.add(extra.id);
+  }
+
+  // Backfill if we still don't have 4
+  if (result.length < 4) {
+    const rest = allItems.filter(i => !usedIds.has(i.id));
+    for (const it of [...rest].sort((a, b) => score(b) - score(a))) {
+      if (result.length >= 4) break;
+      result.push(it);
+      usedIds.add(it.id);
+    }
+  }
+
+  return result.slice(0, 4);
 }
 
 function OutfitItemCard({ item }: { item: Item }) {
@@ -408,11 +589,43 @@ function ActionBtn({
 // ============================================================
 // CLOSET SCREEN — frame 25:2
 // ============================================================
-function ClosetScreen({ items, onReturn }: { items: Item[]; onReturn: (id: string) => void }) {
+function ClosetScreen({
+  items, onReturn, onGoToAdd,
+}: {
+  items: Item[]; onReturn: (id: string) => void; onGoToAdd: () => void;
+}) {
   const [activeCat, setActiveCat] = useState("all");
   const cats = ["all", ...Array.from(new Set(items.map(i => i.category)))];
   const filtered = activeCat === "all" ? items : items.filter(i => i.category === activeCat);
   const totalSpend = items.reduce((s, i) => s + (i.price || 0), 0);
+
+  if (items.length === 0) {
+    return (
+      <div className="rise rise-3">
+        <div className="px-6 pt-3">
+          <div className="section-num">02 · The Closet</div>
+          <h1 className="display-title mt-2">
+            Empty<br />
+            <em className="not-italic">for now.</em>
+          </h1>
+        </div>
+        <AccentRow />
+        <div className="px-6 mt-7">
+          <div className="bg-swatchBeige rounded-2xl p-5">
+            <div className="font-serif italic text-[16px] text-terracotta/80 leading-snug">
+              Your closet is empty. Tap Add to paste an order email — I&rsquo;ll extract the pieces.
+            </div>
+            <button
+              onClick={onGoToAdd}
+              className="mt-4 w-full bg-terracotta text-saltCream rounded-2xl py-3 text-[12px] tracking-[0.16em] uppercase font-medium hover:bg-terracotta/90 transition-colors"
+            >
+              Add an item
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="rise rise-3">
@@ -528,8 +741,21 @@ function AddScreen({ onParsed, onDone }: { onParsed: (items: Item[]) => void; on
     }
   }
 
+  function updateParsed(idx: number, patch: Partial<Item>) {
+    if (!parsed) return;
+    const next = [...parsed];
+    next[idx] = { ...next[idx], ...patch };
+    setParsed(next);
+  }
+
+  function dropParsed(idx: number) {
+    if (!parsed) return;
+    const next = parsed.filter((_, i) => i !== idx);
+    setParsed(next.length ? next : null);
+  }
+
   function confirm() {
-    if (parsed) onParsed(parsed);
+    if (parsed && parsed.length) onParsed(parsed);
     setEmailText(""); setParsed(null);
     onDone();
   }
@@ -575,11 +801,21 @@ function AddScreen({ onParsed, onDone }: { onParsed: (items: Item[]) => void; on
         {error && <div className="mt-3 text-[12px] text-picante font-serif italic">{error}</div>}
       </div>
 
-      {parsed && (
+      {parsed && parsed.length > 0 && (
         <div className="px-6 mt-8">
           <div className="section-num">04 · Found {parsed.length} item{parsed.length === 1 ? "" : "s"}</div>
-          <div className="mt-3 grid grid-cols-2 gap-3">
-            {parsed.map(it => <OutfitItemCard key={it.id} item={it} />)}
+          <p className="mt-2 text-[12px] text-terracotta/55 font-serif italic">
+            Tap a field to fix it before adding.
+          </p>
+          <div className="mt-3 grid grid-cols-1 gap-3">
+            {parsed.map((it, idx) => (
+              <ParsedItemCard
+                key={it.id + idx}
+                item={it}
+                onChange={patch => updateParsed(idx, patch)}
+                onDrop={() => dropParsed(idx)}
+              />
+            ))}
           </div>
           <button
             onClick={confirm}
@@ -599,6 +835,59 @@ function AddScreen({ onParsed, onDone }: { onParsed: (items: Item[]) => void; on
           <span className="chip chip-gold">Sézane</span>
         </div>
       )}
+    </div>
+  );
+}
+
+function ParsedItemCard({
+  item, onChange, onDrop,
+}: {
+  item: Item; onChange: (patch: Partial<Item>) => void; onDrop: () => void;
+}) {
+  return (
+    <div className="bg-swatchBeige rounded-2xl border border-terracotta/8 p-3 flex gap-3 relative">
+      <div
+        className="w-20 h-24 rounded-xl flex-shrink-0 flex items-end p-2"
+        style={{ background: item.colorHex }}
+      >
+        <div
+          className="font-serif italic text-[10px] tracking-wide"
+          style={{ color: isDark(item.colorHex) ? "#fff8ea" : "#71241a", opacity: 0.85 }}
+        >
+          {item.brand}
+        </div>
+      </div>
+      <div className="flex-1 min-w-0">
+        <input
+          value={item.name}
+          onChange={e => onChange({ name: e.target.value })}
+          className="w-full bg-transparent text-[13px] font-medium text-terracotta border-b border-terracotta/15 focus:border-terracotta/40 outline-none pb-1"
+        />
+        <div className="flex gap-2 mt-2">
+          <input
+            value={item.color}
+            onChange={e => onChange({ color: e.target.value })}
+            className="flex-1 bg-transparent text-[11px] text-terracotta/70 font-serif italic border-b border-terracotta/10 focus:border-terracotta/30 outline-none pb-1"
+            placeholder="color"
+          />
+          <input
+            value={item.size}
+            onChange={e => onChange({ size: e.target.value })}
+            className="w-16 bg-transparent text-[11px] text-terracotta/70 border-b border-terracotta/10 focus:border-terracotta/30 outline-none pb-1"
+            placeholder="size"
+          />
+        </div>
+        <div className="mt-1 text-[10px] tracking-[0.14em] uppercase text-terracotta/45">
+          {item.category} · ${item.price?.toFixed(0) ?? "—"}
+        </div>
+      </div>
+      <button
+        onClick={onDrop}
+        aria-label="Remove this item"
+        className="absolute top-2 right-2 w-6 h-6 rounded-full bg-terracotta/10 hover:bg-picante hover:text-saltCream text-terracotta/55 text-[14px] leading-none flex items-center justify-center transition-colors"
+      >
+        ×
+      </button>
     </div>
   );
 }
@@ -699,14 +988,27 @@ function TasteScreen({ feedback, wardrobe }: { feedback: Feedback[]; wardrobe: I
   const seedColors = ["#0a0a0a", "#5a3e2a", "#c9a37a", "#f5ecd9", "#2a3552", "#d4b896"];
   const displayColors = colors.length ? colors.map(([c]) => c) : seedColors;
 
+  // Avoidance: aggregate disliked items' brands and categories
   const avoidance: string[] = [];
+  const dislikedBrandCount: Record<string, number> = {};
+  const dislikedCatCount: Record<string, number> = {};
   disliked.forEach(f => {
-    const blob = (f.occasion + " " + f.outfitText).toLowerCase();
-    if (/leather/.test(blob) && !avoidance.includes("leather")) avoidance.push("leather");
-    if (/(jean|denim)/.test(f.occasion.toLowerCase()) && !avoidance.includes("denim when she said no jeans")) {
-      avoidance.push("denim when she said no jeans");
-    }
+    f.itemIds.forEach(id => {
+      const it = wardrobe.find(x => x.id === id); if (!it) return;
+      dislikedBrandCount[it.brand] = (dislikedBrandCount[it.brand] ?? 0) + 1;
+      dislikedCatCount[it.category] = (dislikedCatCount[it.category] ?? 0) + 1;
+    });
   });
+  Object.entries(dislikedBrandCount)
+    .filter(([, n]) => n >= 2)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 3)
+    .forEach(([b]) => avoidance.push(`${b} for now`));
+  Object.entries(dislikedCatCount)
+    .filter(([, n]) => n >= 2)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 2)
+    .forEach(([c]) => avoidance.push(`${c} pieces you've passed on`));
 
   return (
     <div className="rise rise-3">
